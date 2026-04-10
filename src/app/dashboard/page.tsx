@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
@@ -21,22 +21,55 @@ import {
   Check,
 } from 'lucide-react';
 
+// Separated so it can be wrapped in <Suspense> — required by Next.js App Router
+function WelcomeBanner() {
+  const searchParams = useSearchParams();
+  const [show, setShow] = useState(searchParams.get('welcome') === 'true');
+
+  if (!show) return null;
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0, y: -20, scale: 0.95 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: -20, scale: 0.95 }}
+        transition={{ duration: 0.4, type: 'spring' }}
+        className="mb-6 relative overflow-hidden rounded-2xl bg-gradient-to-r from-primary/20 via-accent/15 to-primary/10 border border-primary/30 p-5"
+      >
+        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent animate-gradient" />
+        <div className="relative flex items-start gap-4">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center flex-shrink-0">
+            <PartyPopper size={20} className="text-white" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-bold text-base mb-1">🎉 Pagamento confirmado! Bem-vindo ao Linkura!</h3>
+            <p className="text-sm text-muted">
+              Sua conta está ativa. Crie sua página agora e comece a compartilhar seus links com o mundo.
+            </p>
+          </div>
+          <button
+            onClick={() => setShow(false)}
+            className="p-1.5 rounded-lg text-muted hover:text-foreground hover:bg-surface-light transition-all flex-shrink-0"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
 export default function DashboardPage() {
   const supabase = createClient();
-  const searchParams = useSearchParams();
-  const isWelcome = searchParams.get('welcome') === 'true';
-
   const [page, setPage] = useState<Page | null>(null);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ views: 0, clicks: 0, ctr: '0%' });
-  const [showWelcome, setShowWelcome] = useState(isWelcome);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
       const { data: pageData } = await supabase
@@ -62,8 +95,7 @@ export default function DashboardPage() {
 
         const views = viewCount || 0;
         const clicks = clickCount || 0;
-        const ctr = views > 0 ? ((clicks / views) * 100).toFixed(1) + '%' : '0%';
-        setStats({ views, clicks, ctr });
+        setStats({ views, clicks, ctr: views > 0 ? ((clicks / views) * 100).toFixed(1) + '%' : '0%' });
       }
 
       setLoading(false);
@@ -89,39 +121,10 @@ export default function DashboardPage() {
 
   return (
     <div>
-      {/* Welcome banner */}
-      <AnimatePresence>
-        {showWelcome && (
-          <motion.div
-            initial={{ opacity: 0, y: -20, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -20, scale: 0.95 }}
-            transition={{ duration: 0.4, type: 'spring' }}
-            className="mb-6 relative overflow-hidden rounded-2xl bg-gradient-to-r from-primary/20 via-accent/15 to-primary/10 border border-primary/30 p-5"
-          >
-            {/* Shimmer effect */}
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent animate-gradient" />
-
-            <div className="relative flex items-start gap-4">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center flex-shrink-0">
-                <PartyPopper size={20} className="text-white" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h3 className="font-bold text-base mb-1">🎉 Pagamento confirmado! Bem-vindo ao Linkura!</h3>
-                <p className="text-sm text-muted">
-                  Sua conta está ativa. Crie sua página agora e comece a compartilhar seus links com o mundo.
-                </p>
-              </div>
-              <button
-                onClick={() => setShowWelcome(false)}
-                className="p-1.5 rounded-lg text-muted hover:text-foreground hover:bg-surface-light transition-all flex-shrink-0"
-              >
-                <X size={16} />
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Welcome banner — wrapped in Suspense because it uses useSearchParams */}
+      <Suspense fallback={null}>
+        <WelcomeBanner />
+      </Suspense>
 
       {/* Header */}
       <motion.div
@@ -130,12 +133,10 @@ export default function DashboardPage() {
         className="mb-8"
       >
         <h1 className="text-2xl sm:text-3xl font-bold mb-2">
-          {page ? `Bem-vindo de volta` : 'Bem-vindo ao Linkura'}
+          {page ? 'Bem-vindo de volta' : 'Bem-vindo ao Linkura'}
         </h1>
         <p className="text-muted">
-          {page
-            ? 'Gerencie sua página e acompanhe seus resultados'
-            : 'Crie sua primeira página e comece a crescer'}
+          {page ? 'Gerencie sua página e acompanhe seus resultados' : 'Crie sua primeira página e comece a crescer'}
         </p>
       </motion.div>
 
@@ -153,7 +154,7 @@ export default function DashboardPage() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.1 }}
-                className="glass-card p-6 relative overflow-hidden group hover:border-primary/20 transition-colors"
+                className="glass-card p-6 relative overflow-hidden"
               >
                 <div className={`absolute top-0 right-0 w-24 h-24 rounded-full ${stat.bg} blur-[40px] opacity-50`} />
                 <div className={`w-10 h-10 rounded-xl ${stat.bg} border ${stat.border} flex items-center justify-center mb-4`}>
@@ -167,7 +168,6 @@ export default function DashboardPage() {
 
           {/* Page Preview + Actions */}
           <div className="grid lg:grid-cols-2 gap-6">
-            {/* Preview */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -182,12 +182,11 @@ export default function DashboardPage() {
                     Publicada
                   </span>
                 ) : (
-                  <span className="flex items-center gap-1.5 text-xs text-muted bg-surface-light border border-surface-border px-2.5 py-1 rounded-full">
+                  <span className="text-xs text-muted bg-surface-light border border-surface-border px-2.5 py-1 rounded-full">
                     Não publicada
                   </span>
                 )}
               </div>
-
               <div className="bg-surface-light rounded-xl p-6 text-center mb-4">
                 <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary to-accent mx-auto mb-3 flex items-center justify-center text-xl font-bold text-white">
                   {page.title?.charAt(0)?.toUpperCase() || '?'}
@@ -195,8 +194,6 @@ export default function DashboardPage() {
                 <h3 className="font-semibold">{page.title}</h3>
                 {page.bio && <p className="text-xs text-muted mt-1 max-w-xs mx-auto">{page.bio}</p>}
               </div>
-
-              {/* Copy link */}
               <button
                 onClick={copyLink}
                 className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl bg-surface border border-surface-border hover:border-primary/30 transition-all text-sm group"
@@ -210,7 +207,6 @@ export default function DashboardPage() {
               </button>
             </motion.div>
 
-            {/* Actions */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -219,10 +215,7 @@ export default function DashboardPage() {
             >
               <h2 className="text-base font-semibold mb-4">Ações Rápidas</h2>
               <div className="space-y-3">
-                <Link
-                  href="/dashboard/editor"
-                  className="flex items-center gap-3 p-4 rounded-xl bg-surface-light border border-surface-border hover:border-primary/30 hover:bg-primary/5 transition-all group"
-                >
+                <Link href="/dashboard/editor" className="flex items-center gap-3 p-4 rounded-xl bg-surface-light border border-surface-border hover:border-primary/30 hover:bg-primary/5 transition-all group">
                   <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
                     <Pencil size={16} className="text-primary" />
                   </div>
@@ -233,11 +226,7 @@ export default function DashboardPage() {
                   <ExternalLink size={14} className="text-muted group-hover:text-primary transition-colors" />
                 </Link>
 
-                <Link
-                  href={`/${page.username}`}
-                  target="_blank"
-                  className="flex items-center gap-3 p-4 rounded-xl bg-surface-light border border-surface-border hover:border-accent/30 hover:bg-accent/5 transition-all group"
-                >
+                <Link href={`/${page.username}`} target="_blank" className="flex items-center gap-3 p-4 rounded-xl bg-surface-light border border-surface-border hover:border-accent/30 hover:bg-accent/5 transition-all group">
                   <div className="w-9 h-9 rounded-lg bg-accent/10 flex items-center justify-center">
                     <Eye size={16} className="text-accent" />
                   </div>
@@ -248,10 +237,7 @@ export default function DashboardPage() {
                   <ExternalLink size={14} className="text-muted group-hover:text-accent transition-colors" />
                 </Link>
 
-                <Link
-                  href="/dashboard/analytics"
-                  className="flex items-center gap-3 p-4 rounded-xl bg-surface-light border border-surface-border hover:border-success/30 hover:bg-success/5 transition-all group"
-                >
+                <Link href="/dashboard/analytics" className="flex items-center gap-3 p-4 rounded-xl bg-surface-light border border-surface-border hover:border-success/30 hover:bg-success/5 transition-all group">
                   <div className="w-9 h-9 rounded-lg bg-success/10 flex items-center justify-center">
                     <Percent size={16} className="text-success" />
                   </div>
@@ -262,10 +248,7 @@ export default function DashboardPage() {
                   <ExternalLink size={14} className="text-muted group-hover:text-success transition-colors" />
                 </Link>
 
-                <button
-                  disabled
-                  className="flex items-center gap-3 p-4 rounded-xl bg-primary/5 border border-primary/15 w-full opacity-60 cursor-not-allowed"
-                >
+                <button disabled className="flex items-center gap-3 p-4 rounded-xl bg-primary/5 border border-primary/15 w-full opacity-60 cursor-not-allowed">
                   <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
                     <Sparkles size={16} className="text-primary" />
                   </div>
@@ -280,7 +263,6 @@ export default function DashboardPage() {
           </div>
         </>
       ) : (
-        /* Empty state */
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
