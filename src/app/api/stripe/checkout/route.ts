@@ -10,48 +10,42 @@ const ALLOWED_PRICES: Record<string, string> = {
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createServerSupabaseClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get plan from request body
     const body = await req.json().catch(() => ({}));
-    console.log('Checkout request body:', body);
-
-    const plan = body.plan || 'pro';
-    let priceId = body.priceId || ALLOWED_PRICES[plan];
-
-    console.log('Resolved priceId:', priceId);
+    const plan: string = body.plan || 'pro';
+    const priceId: string = body.priceId || ALLOWED_PRICES[plan];
 
     if (!priceId) {
-      console.error('Invalid plan or missing priceId. Body:', body);
       return NextResponse.json({ error: 'Invalid plan or priceId' }, { status: 400 });
     }
 
-    // Create checkout session
     const session = await stripe.checkout.sessions.create({
-      mode: 'payment',
+      mode: 'subscription',
       payment_method_types: ['card'],
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?success=true`,
-      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/pricing?canceled=true`,
+      // {CHECKOUT_SESSION_ID} is Stripe's template variable – replaced automatically
+      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/payment/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/payment?canceled=true`,
       client_reference_id: user.id,
       customer_email: user.email,
-      metadata: {
-        user_id: user.id,
-        plan: body.plan || 'custom',
+      metadata: { user_id: user.id, plan },
+      subscription_data: {
+        metadata: { user_id: user.id, plan },
       },
     });
 
-    console.log('Checkout session created:', session.id);
     return NextResponse.json({ url: session.url });
-  } catch (error: any) {
-    console.error('Stripe checkout error full detail:', error);
-    return NextResponse.json(
-      { error: error.message || 'Error creating checkout session' },
-      { status: 500 }
-    );
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : 'Error creating checkout session';
+    console.error('[Checkout] Stripe error:', error);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
